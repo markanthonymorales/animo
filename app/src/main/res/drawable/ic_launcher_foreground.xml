@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Styled peaceful spiritual flame/teardrop of hope, perfectly centered in safe zone -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,24 C45,24 35,31 35,43 C35,58 50,67 54,82 C58,67 73,58 73,43 C73,31 63,24 54,24 Z" />
+    <path
+        android:fillColor="#8DA4D4"
+        android:pathData="M54,34 C49,34 43,38 43,45 C43,54 54,60 54,72 C54,60 65,54 65,45 C65,38 59,34 54,34 Z" />
+    <path
+        android:fillColor="#DFB15B"
+        android:pathData="M54,82 C55.5,82 57,80.5 57,79 C57,77.5 55.5,76 54,76 C52.5,76 51,77.5 51,79 C51,80.5 52.5,82 54,82 Z" />
+</vector>

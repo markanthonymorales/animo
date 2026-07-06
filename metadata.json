@@ -1,0 +1,6 @@
+{
+  "name": "Animo",
+  "description": "Animo: Your Spiritual Sanctuary. An offline-first meditative, spiritual guide, daily scriptures, and comforting AI chat for mental well-being.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
