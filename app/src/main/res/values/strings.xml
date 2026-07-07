@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Animo</string>
+    <string name="empty_tag" translatable="false"></string>
 </resources>

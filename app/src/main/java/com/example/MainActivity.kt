@@ -19,6 +19,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import com.example.ui.MainViewModel
 import com.example.ui.Screen
 import com.example.ui.components.SimulatedAdBanner
@@ -221,11 +226,19 @@ class MainActivity : ComponentActivity() {
                                 bottom = if (currentScreen == Screen.Welcome) 0.dp else innerPadding.calculateBottomPadding()
                             )
                     ) {
-                        when (currentScreen) {
-                            is Screen.Welcome -> WelcomeScreen(viewModel = viewModel)
-                            is Screen.Dashboard -> DashboardScreen(viewModel = viewModel)
-                            is Screen.MediaPlayer -> MediaPlayerScreen(viewModel = viewModel)
-                            is Screen.Counsel -> CounselScreen(viewModel = viewModel)
+                        AnimatedContent(
+                            targetState = currentScreen,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(500)) togetherWith fadeOut(animationSpec = tween(500))
+                            },
+                            label = "screen_navigation_animation"
+                        ) { targetScreen ->
+                            when (targetScreen) {
+                                is Screen.Welcome -> WelcomeScreen(viewModel = viewModel)
+                                is Screen.Dashboard -> DashboardScreen(viewModel = viewModel)
+                                is Screen.MediaPlayer -> MediaPlayerScreen(viewModel = viewModel)
+                                is Screen.Counsel -> CounselScreen(viewModel = viewModel)
+                            }
                         }
                     }
                 }

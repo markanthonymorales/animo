@@ -38,3 +38,18 @@ interface FavoriteDao {
     @Query("SELECT EXISTS(SELECT * FROM favorites WHERE text = :text AND language = :lang)")
     suspend fun isFavorite(text: String, lang: String): Boolean
 }
+
+@Dao
+interface DownloadedDao {
+    @Query("SELECT * FROM downloaded_resources ORDER BY timestamp DESC")
+    fun getAllDownloadsFlow(): Flow<List<DownloadedResource>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDownload(resource: DownloadedResource)
+
+    @Query("DELETE FROM downloaded_resources WHERE resourceId = :id")
+    suspend fun deleteDownload(id: String)
+
+    @Query("SELECT EXISTS(SELECT * FROM downloaded_resources WHERE resourceId = :id)")
+    suspend fun isDownloaded(id: String): Boolean
+}

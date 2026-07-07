@@ -28,3 +28,15 @@ data class FavoriteItem(
     val language: String,
     val timestamp: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "downloaded_resources")
+data class DownloadedResource(
+    @PrimaryKey val resourceId: String, // e.g., mediaId, prayerId, or scriptureRef
+    val title: String,
+    val subtitle: String,
+    val type: String, // "video", "audio_worship", "audio_prayer", "scripture", "prayer"
+    val content: String, // lyric, content, or verse text
+    val duration: String = "",
+    val language: String,
+    val timestamp: Long = System.currentTimeMillis()
+)

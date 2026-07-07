@@ -4,19 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -35,7 +30,6 @@ fun WelcomeScreen(
     val language by viewModel.language.collectAsState()
     val selectedMood by viewModel.selectedMood.collectAsState()
 
-    // Determine greeting based on local time
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val timeGreeting = when {
         hour in 5..11 -> when (language) {
@@ -61,185 +55,274 @@ fun WelcomeScreen(
         else -> "What is on your heart right now?"
     }
 
-    // List of emotional states
-    val emotionalStates = listOf(
-        MoodTag("Anxious", when (language) {
-            "es" -> "Ansioso / Agobiado"
-            "tl" -> "Mabalisa / Punô"
-            else -> "Anxious / Overwhelmed"
-        }, "🌪️"),
-        MoodTag("Sad", when (language) {
-            "es" -> "Triste / Desanimado"
-            "tl" -> "Malungkot / Pagod"
-            else -> "Sad / Low Energy"
-        }, "🌧️"),
-        MoodTag("Lonely", when (language) {
-            "es" -> "Solitario"
-            "tl" -> "Nag-iisa"
-            else -> "Lonely"
-        }, "🍃"),
-        MoodTag("Grateful", when (language) {
-            "es" -> "Agradecido"
-            "tl" -> "Nagpapasalamat"
-            else -> "Grateful"
-        }, "☀️"),
-        MoodTag("Struggling", when (language) {
-            "es" -> "Estresado / Luchando"
-            "tl" -> "Nahihirapan / Stressed"
-            else -> "Struggling / Stressed"
-        }, "⚓")
-    )
+    // Sage green theme color
+    val sageBgColor = Color(0xFF8CA693)
+    val creamTextColor = Color(0xFFFBF9F4)
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.background,
-                        MaterialTheme.colorScheme.surface
-                    )
-                )
-            )
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .background(sageBgColor)
+            .statusBarsPadding()
+            .navigationBarsPadding()
     ) {
-        // Decorative peaceful glowing circle in background
+        // 1. Language Toggle Button (Top-Right)
         Box(
             modifier = Modifier
-                .size(72.dp)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape)
-                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), CircleShape),
-            contentAlignment = Alignment.Center
+                .align(Alignment.TopEnd)
+                .padding(top = 16.dp, end = 20.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable {
+                    val nextLang = when (language) {
+                        "en" -> "es"
+                        "es" -> "tl"
+                        else -> "en"
+                    }
+                    viewModel.setLanguage(nextLang)
+                }
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .testTag("welcome_language_toggle")
         ) {
             Text(
-                text = "🕊️",
-                fontSize = 32.sp
+                text = "[Language: ${language.uppercase(Locale.ROOT)}]",
+                color = creamTextColor.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 0.5.sp
             )
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Large high-contrast but gentle typography greeting
-        Text(
-            text = timeGreeting,
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = heartQuestion,
-            style = MaterialTheme.typography.displayMedium,
-            fontWeight = FontWeight.Light,
-            color = MaterialTheme.colorScheme.onBackground,
-            textAlign = TextAlign.Center,
-            lineHeight = 36.sp,
-            modifier = Modifier.padding(horizontal = 8.dp)
-        )
-
-        Spacer(modifier = Modifier.height(48.dp))
-
-        // Grid selection for moods
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(1),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        // 2. Main Content Column
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f, fill = false)
-                .testTag("mood_grid")
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            items(emotionalStates) { mood ->
-                val isSelected = selectedMood == mood.id
-                val borderAlpha = if (isSelected) 1f else 0.15f
-                val bgAlpha = if (isSelected) 0.15f else 0.04f
+            Spacer(modifier = Modifier.height(110.dp))
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f)
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(16.dp)
-                        )
-                        .clickable {
-                            viewModel.setMood(mood.id)
-                        }
-                        .padding(horizontal = 20.dp, vertical = 16.dp)
-                        .testTag("mood_tag_${mood.id.lowercase()}"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = mood.emoji,
-                        fontSize = 24.sp,
-                        modifier = Modifier.padding(end = 16.dp)
+            // Dynamic Time-based Greeting
+            Text(
+                text = timeGreeting,
+                style = MaterialTheme.typography.displayMedium.copy(
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = 38.sp
+                ),
+                color = creamTextColor,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // "What is on your heart right now?"
+            Text(
+                text = heartQuestion,
+                style = MaterialTheme.typography.displayMedium.copy(
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Normal,
+                    lineHeight = 36.sp
+                ),
+                color = creamTextColor,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(48.dp))
+
+            // Pill-shaped mood choices
+            // Row 1: Anxious / Overwhelmed
+            MoodPillItem(
+                label = when (language) {
+                    "es" -> "Ansioso / Agobiado"
+                    "tl" -> "Mabalisa / Punô"
+                    else -> "Anxious / Overwhelmed"
+                },
+                isSelected = selectedMood == "Anxious",
+                onClick = {
+                    viewModel.setMood("Anxious")
+                    viewModel.navigateTo(Screen.Dashboard)
+                },
+                creamColor = creamTextColor
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Row 2: Sad / Low Energy
+            MoodPillItem(
+                label = when (language) {
+                    "es" -> "Triste / Desanimado"
+                    "tl" -> "Malungkot / Pagod"
+                    else -> "Sad / Low Energy"
+                },
+                isSelected = selectedMood == "Sad",
+                onClick = {
+                    viewModel.setMood("Sad")
+                    viewModel.navigateTo(Screen.Dashboard)
+                },
+                creamColor = creamTextColor
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Row 3: Lonely & Grateful side-by-side
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    MoodPillItem(
+                        label = when (language) {
+                            "es" -> "Solitario"
+                            "tl" -> "Nag-iisa"
+                            else -> "Lonely"
+                        },
+                        isSelected = selectedMood == "Lonely",
+                        onClick = {
+                            viewModel.setMood("Lonely")
+                            viewModel.navigateTo(Screen.Dashboard)
+                        },
+                        creamColor = creamTextColor
                     )
-                    Text(
-                        text = mood.label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.weight(1f)
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    MoodPillItem(
+                        label = when (language) {
+                            "es" -> "Agradecido"
+                            "tl" -> "Nagpapasalamat"
+                            else -> "Grateful"
+                        },
+                        isSelected = selectedMood == "Grateful",
+                        onClick = {
+                            viewModel.setMood("Grateful")
+                            viewModel.navigateTo(Screen.Dashboard)
+                        },
+                        creamColor = creamTextColor
                     )
-                    if (isSelected) {
-                        RadioButton(
-                            selected = true,
-                            onClick = { viewModel.setMood(mood.id) },
-                            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
-                        )
-                    }
                 }
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Row 4: Healing & Stressed side-by-side
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    MoodPillItem(
+                        label = when (language) {
+                            "es" -> "Sanación"
+                            "tl" -> "Paggaling"
+                            else -> "Healing"
+                        },
+                        isSelected = selectedMood == "Grateful", // Maps to Grateful for scripture/prayer peace!
+                        onClick = {
+                            viewModel.setMood("Grateful")
+                            viewModel.navigateTo(Screen.Dashboard)
+                        },
+                        creamColor = creamTextColor
+                    )
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    MoodPillItem(
+                        label = when (language) {
+                            "es" -> "Estresado"
+                            "tl" -> "Na-stress"
+                            else -> "Stressed"
+                        },
+                        isSelected = selectedMood == "Struggling", // Maps to Struggling for comforting scripture!
+                        onClick = {
+                            viewModel.setMood("Struggling")
+                            viewModel.navigateTo(Screen.Dashboard)
+                        },
+                        creamColor = creamTextColor
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(120.dp)) // Space for bottom anchored items
         }
 
-        Spacer(modifier = Modifier.height(48.dp))
-
-        // Dynamic entry button with responsive layout
-        Button(
-            onClick = { viewModel.navigateTo(Screen.Dashboard) },
+        // 3. Anchored Bottom Components
+        Column(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(54.dp)
-                .testTag("enter_sanctuary_button"),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            shape = RoundedCornerShape(27.dp)
+                .background(sageBgColor)
+                .padding(bottom = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+            // Simulated Ad Banner
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(creamTextColor.copy(alpha = 0.15f))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
                 Text(
                     text = when (language) {
-                        "es" -> "Entrar al Santuario"
-                        "tl" -> "Pumasok sa Santuwaryo"
-                        else -> "Enter Sanctuary"
+                        "es" -> "ANUNCIO: Aplicación de Asesoría Local (Banner)"
+                        "tl" -> "AD: Lokal na Counseling App (Banner)"
+                        else -> "AD: Local Counseling App (Banner)"
                     },
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(
-                    imageVector = Icons.Default.ArrowForward,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(18.dp)
+                    color = creamTextColor,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Bottom-most static navigation visual helper
+            Text(
+                text = "[Home - Media - AI Chat]",
+                color = creamTextColor.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 0.5.sp
+            )
         }
     }
 }
 
-data class MoodTag(
-    val id: String,
-    val label: String,
-    val emoji: String
-)
+@Composable
+fun MoodPillItem(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    creamColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                if (isSelected) creamColor.copy(alpha = 0.25f)
+                else Color.Transparent
+            )
+            .border(
+                width = 1.dp,
+                color = creamColor,
+                shape = RoundedCornerShape(24.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .testTag("mood_pill_${label.lowercase().replace(" ", "_")}"),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = creamColor,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+    }
+}

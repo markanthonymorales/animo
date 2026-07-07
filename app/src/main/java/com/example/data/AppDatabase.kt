@@ -6,14 +6,15 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [PreferenceEntry::class, VerseEntry::class, FavoriteItem::class],
-    version = 1,
+    entities = [PreferenceEntry::class, VerseEntry::class, FavoriteItem::class, DownloadedResource::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun preferenceDao(): PreferenceDao
     abstract fun verseDao(): VerseDao
     abstract fun favoriteDao(): FavoriteDao
+    abstract fun downloadedDao(): DownloadedDao
 
     companion object {
         @Volatile
@@ -25,7 +26,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "animo_spiritual_sanctuary_db"
-                ).build()
+                )
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }

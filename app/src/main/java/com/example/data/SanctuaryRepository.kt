@@ -7,6 +7,7 @@ class SanctuaryRepository(private val db: AppDatabase) {
     private val prefDao = db.preferenceDao()
     private val verseDao = db.verseDao()
     private val favoriteDao = db.favoriteDao()
+    private val downloadedDao = db.downloadedDao()
 
     // Preferences
     fun getLanguageFlow(): Flow<String> = prefDao.getPreferenceFlow("pref_language").map { it?.value ?: "en" }
@@ -22,6 +23,13 @@ class SanctuaryRepository(private val db: AppDatabase) {
     fun getLastMoodFlow(): Flow<String?> = prefDao.getPreferenceFlow("pref_last_mood").map { it?.value }
     suspend fun saveLastMood(mood: String) = prefDao.insertPreference(PreferenceEntry("pref_last_mood", mood))
 
+    // Daily Affirmation Persistence
+    suspend fun getDailyAffirmationText(): String? = prefDao.getPreference("daily_affirmation_text")?.value
+    suspend fun saveDailyAffirmationText(text: String) = prefDao.insertPreference(PreferenceEntry("daily_affirmation_text", text))
+
+    suspend fun getDailyAffirmationTimestamp(): Long = prefDao.getPreference("daily_affirmation_timestamp")?.value?.toLongOrNull() ?: 0L
+    suspend fun saveDailyAffirmationTimestamp(timestamp: Long) = prefDao.insertPreference(PreferenceEntry("daily_affirmation_timestamp", timestamp.toString()))
+
     // Verse cache
     suspend fun getCachedVerse(mood: String, lang: String): VerseEntry? {
         val id = "${mood}_$lang"
@@ -36,4 +44,10 @@ class SanctuaryRepository(private val db: AppDatabase) {
     suspend fun addFavorite(item: FavoriteItem) = favoriteDao.insertFavorite(item)
     suspend fun removeFavorite(text: String, lang: String) = favoriteDao.deleteFavoriteByContent(text, lang)
     suspend fun isFavorite(text: String, lang: String): Boolean = favoriteDao.isFavorite(text, lang)
+
+    // Downloads
+    fun getDownloadsFlow(): Flow<List<DownloadedResource>> = downloadedDao.getAllDownloadsFlow()
+    suspend fun addDownload(resource: DownloadedResource) = downloadedDao.insertDownload(resource)
+    suspend fun removeDownload(id: String) = downloadedDao.deleteDownload(id)
+    suspend fun isDownloaded(id: String): Boolean = downloadedDao.isDownloaded(id)
 }

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Animo React Player</title>
+  <!-- React and Babel from CDN for standalone browser compatibility -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background-color: #121C24;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+    /* Simple breathing animation */
+    @keyframes breathe {
+      0%, 100% { transform: scale(0.95); opacity: 0.4; }
+      50% { transform: scale(1.1); opacity: 0.85; }
+    }
+    .breathing-glow {
+      animation: breathe 5s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="text-slate-100 select-none">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const BIBLE_PROJECT_TRACKS = [
+      {
+        id: "v1_en",
+        title: "The Bible Project: Covenant",
+        subtitle: "Theme Video Series - Genesis to Revelation",
+        type: "video",
+        url: "https://www.w3schools.com/html/mov_bbb.mp4", // Real sample video streaming endpoint
+        duration: "5:40",
+        lyricOrScripture: "God enters a sacred agreement to restore relationship with humanity, culminating in Jesus the ultimate Covenant keeper."
+      },
+      {
+        id: "v2_en",
+        title: "The Bible Project: Tree of Life",
+        subtitle: "Theme Video Series - Wisdom & Eternity",
+        type: "video",
+        url: "https://www.w3schools.com/html/movie.mp4", // Real sample streaming video
+        duration: "4:15",
+        lyricOrScripture: "From Eden to the New Jerusalem, God's desire is to share His eternal life-giving presence with all who trust Him."
+      },
+      {
+        id: "w1_en",
+        title: "The Bible Project: Grace & Peace",
+        subtitle: "Epistles Meditative Audio Track",
+        type: "audio_worship",
+        url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", // Real sample streaming audio
+        duration: "3:45",
+        lyricOrScripture: "Peace and Grace be multiplied to you in the knowledge of God and of Jesus our Lord. Cast your anxieties upon Him."
+      },
+      {
+        id: "p1_en",
+        title: "The Bible Project: Wisdom Literature",
+        subtitle: "Guided Audio Prayer & Reflection",
+        type: "audio_prayer",
+        url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3", // Real sample streaming audio
+        duration: "6:10",
+        lyricOrScripture: "Fear of the Lord is the beginning of wisdom. Let us seek His peaceful paths and understand His righteous ways."
+      }
+    ];
+
+    function App() {
+      const [tracks, setTracks] = useState(BIBLE_PROJECT_TRACKS);
+      const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
+      const [isPlaying, setIsPlaying] = useState(false);
+      const [progress, setProgress] = useState(0); // 0 to 100
+      const [currentTime, setCurrentTime] = useState("0:00");
+      const [downloads, setDownloads] = useState([]);
+
+      const audioRef = useRef(null);
+      const videoRef = useRef(null);
+
+      const activeTrack = tracks[currentTrackIndex];
+
+      // Expose function to trigger from Android Kotlin code
+      useEffect(() => {
+        window.setTracksFromAndroid = (newTracks) => {
+          if (newTracks && newTracks.length > 0) {
+            setTracks(newTracks);
+            setCurrentTrackIndex(0);
+            setIsPlaying(false);
+            setProgress(0);
+            setCurrentTime("0:00");
+          }
+        };
+
+        window.setTrackFromAndroid = (trackId) => {
+          const index = tracks.findIndex(t => t.id === trackId);
+          if (index !== -1) {
+            setCurrentTrackIndex(index);
+            setIsPlaying(true);
+          }
+        };
+        
+        window.togglePlaybackFromAndroid = (playing) => {
+          setIsPlaying(playing);
+        };
+
+        window.updateDownloadsFromAndroid = (downloadedIds) => {
+          setDownloads(downloadedIds || []);
+        };
+      }, [tracks]);
+
+      // Handle actual HTML5 media play/pause
+      useEffect(() => {
+        const media = activeTrack.type === 'video' ? videoRef.current : audioRef.current;
+        const otherMedia = activeTrack.type === 'video' ? audioRef.current : videoRef.current;
+
+        // Pause other media
+        if (otherMedia) {
+          otherMedia.pause();
+        }
+
+        if (media) {
+          if (isPlaying) {
+            media.play().catch(e => {
+              console.log("Auto-play blocked or error: ", e);
+            });
+          } else {
+            media.pause();
+          }
+        }
+
+        // Notify Android
+        if (window.Android && window.Android.onPlaybackChanged) {
+          window.Android.onPlaybackChanged(isPlaying);
+        }
+      }, [isPlaying, currentTrackIndex, activeTrack.type]);
+
+      const handleTimeUpdate = (e) => {
+        const media = e.target;
+        const duration = media.duration || 1;
+        const percent = (media.currentTime / duration) * 100;
+        setProgress(percent);
+
+        const min = Math.floor(media.currentTime / 60);
+        const sec = Math.floor(media.currentTime % 60);
+        setCurrentTime(`${min}:${sec < 10 ? '0' : ''}${sec}`);
+
+        // Update progress in Android
+        if (window.Android && window.Android.onProgressChanged) {
+          window.Android.onProgressChanged(media.currentTime / duration);
+        }
+      };
+
+      const handleMediaEnd = () => {
+        handleNext();
+      };
+
+      const handleTogglePlay = () => {
+        setIsPlaying(!isPlaying);
+      };
+
+      const handleNext = () => {
+        const nextIndex = (currentTrackIndex + 1) % tracks.length;
+        setCurrentTrackIndex(nextIndex);
+        setIsPlaying(true);
+        setProgress(0);
+        setCurrentTime("0:00");
+        notifyTrackChange(tracks[nextIndex].id);
+      };
+
+      const handlePrev = () => {
+        const prevIndex = currentTrackIndex === 0 ? tracks.length - 1 : currentTrackIndex - 1;
+        setCurrentTrackIndex(prevIndex);
+        setIsPlaying(true);
+        setProgress(0);
+        setCurrentTime("0:00");
+        notifyTrackChange(tracks[prevIndex].id);
+      };
+
+      const handleSeek = (e) => {
+        const val = parseFloat(e.target.value);
+        setProgress(val);
+        const media = activeTrack.type === 'video' ? videoRef.current : audioRef.current;
+        if (media) {
+          const duration = media.duration || 0;
+          media.currentTime = (val / 100) * duration;
+        }
+      };
+
+      const handleSelectTrack = (index) => {
+        setCurrentTrackIndex(index);
+        setIsPlaying(true);
+        setProgress(0);
+        setCurrentTime("0:00");
+        notifyTrackChange(tracks[index].id);
+      };
+
+      const notifyTrackChange = (id) => {
+        if (window.Android && window.Android.onTrackSelected) {
+          window.Android.onTrackSelected(id);
+        }
+      };
+
+      return (
+        <div class="flex flex-col min-h-screen px-4 py-6 max-w-md mx-auto">
+          {/* Header */}
+          <div class="flex items-center justify-between mb-6">
+            <button 
+              onClick={() => window.Android && window.Android.onBackToDashboard()}
+              class="p-2 bg-white/5 hover:bg-white/10 rounded-full text-slate-300 transition-all duration-200"
+            >
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+              </svg>
+            </button>
+            <div class="text-center">
+              <h1 class="text-lg font-bold tracking-wide">React Meditative Player</h1>
+              <span class="text-xs text-emerald-400 font-semibold uppercase tracking-widest bg-emerald-950/40 px-3 py-1 rounded-full border border-emerald-900/40">
+                Bible Project Media
+              </span>
+            </div>
+            <div class="w-10"></div>
+          </div>
+
+          {/* Player Viewport */}
+          <div class="bg-slate-900/60 rounded-3xl p-6 mb-6 border border-white/5 shadow-xl relative overflow-hidden backdrop-blur-md">
+            {activeTrack.type === 'video' ? (
+              <div class="w-full aspect-video rounded-2xl bg-black overflow-hidden relative border border-white/10 mb-4 shadow-inner">
+                <video 
+                  ref={videoRef}
+                  src={activeTrack.url}
+                  class="w-full h-full object-cover"
+                  onTimeUpdate={handleTimeUpdate}
+                  onEnded={handleMediaEnd}
+                  playsInline
+                />
+                {!isPlaying && (
+                  <div class="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer" onClick={handleTogglePlay}>
+                    <div class="w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg transform hover:scale-105 transition-all">
+                      <svg class="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M4.5 3.5v13l11-6.5-11-6.5z" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div class="flex items-center justify-center h-44 relative mb-4">
+                {/* Aura circles */}
+                <div class="absolute w-36 h-36 bg-emerald-500/10 rounded-full breathing-glow"></div>
+                <div class="absolute w-24 h-24 bg-teal-500/15 rounded-full breathing-glow" style={{ animationDelay: '2.5s' }}></div>
+                
+                {/* Simulated Vinyl/Disc */}
+                <div class={`w-28 h-28 bg-slate-950 rounded-full border-4 border-slate-800 flex items-center justify-center shadow-2xl ${isPlaying ? 'animate-[spin_8s_linear_infinite]' : ''}`}>
+                  <div class="w-10 h-10 bg-slate-800 rounded-full border border-slate-700 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 1.343-3 3s1.343 3 3 3 3-1.343 3-3V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 1.343-3 3s1.343 3 3 3 3-1.343 3-3V3z" />
+                    </svg>
+                  </div>
+                </div>
+                
+                <audio 
+                  ref={audioRef}
+                  src={activeTrack.url}
+                  onTimeUpdate={handleTimeUpdate}
+                  onEnded={handleMediaEnd}
+                />
+              </div>
+            )}
+
+            {/* Title & Metadata */}
+            <div class="text-center mb-6">
+              <h2 class="text-xl font-bold text-white line-clamp-1">{activeTrack.title}</h2>
+              <p class="text-xs text-slate-400 mt-1 line-clamp-1">{activeTrack.subtitle}</p>
+            </div>
+
+            {/* Lyric/Scripture Callout */}
+            <div class="bg-white/5 rounded-2xl p-4 text-center text-xs italic text-slate-300 leading-relaxed mb-6 border border-white/5">
+              "{activeTrack.lyricOrScripture}"
+            </div>
+
+            {/* Seek Bar Slider */}
+            <div class="mb-2">
+              <input 
+                type="range" 
+                min="0" 
+                max="100" 
+                value={progress} 
+                onChange={handleSeek}
+                class="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-400 focus:outline-none"
+              />
+            </div>
+
+            {/* Time labels */}
+            <div class="flex justify-between text-[10px] text-slate-400 font-mono">
+              <span>{currentTime}</span>
+              <span>{activeTrack.duration}</span>
+            </div>
+
+            {/* Controls */}
+            <div class="flex items-center justify-center gap-6 mt-4">
+              <button onClick={handlePrev} class="p-3 bg-white/5 hover:bg-white/10 rounded-full text-white transition">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M4 4a1 1 0 011 1v4.252l5.106-4.255A1 1 0 0111.6 5.8v3.452l5.106-4.255A1 1 0 0118.2 5.8v8.4a1 1 0 01-1.6.8l-5.106-4.255V14.2a1 1 0 01-1.6.8L5 10.748V15a1 1 0 01-2 0V5a1 1 0 011-1z" />
+                </svg>
+              </button>
+
+              <button 
+                onClick={handleTogglePlay}
+                class="w-14 h-14 bg-emerald-500 hover:bg-emerald-400 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/20 text-white transition transform active:scale-95"
+              >
+                {isPlaying ? (
+                  <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg class="w-6 h-6 ml-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                  </svg>
+                )}
+              </button>
+
+              <button onClick={handleNext} class="p-3 bg-white/5 hover:bg-white/10 rounded-full text-white transition">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M4.555 5.168A1 1 0 003 6v8a1 1 0 001.555.832L10 11.202V14a1 1 0 001.555.832l6-4a1 1 0 000-1.664l-6-4A1 1 0 0010 6v2.798L4.555 5.168z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Explore Tracklist Title */}
+          <h3 class="text-sm font-bold text-slate-300 tracking-wide mb-3 pl-1">Quiet Meditative Tracks</h3>
+
+          {/* Tracklist Items */}
+          <div class="flex flex-col gap-2 overflow-y-auto max-h-60 pr-1">
+            {tracks.map((track, idx) => {
+              const isActive = idx === currentTrackIndex;
+              return (
+                <div 
+                  key={track.id}
+                  onClick={() => handleSelectTrack(idx)}
+                  class={`flex items-center gap-3 p-3 rounded-2xl cursor-pointer border transition-all duration-200 ${
+                    isActive 
+                      ? 'bg-emerald-950/40 border-emerald-500/40' 
+                      : 'bg-white/3 hover:bg-white/5 border-transparent'
+                  }`}
+                >
+                  <div class={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold ${isActive ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                    {idx + 1}
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-1.5">
+                      <h4 class={`text-sm font-bold truncate ${isActive ? 'text-emerald-400' : 'text-slate-200'}`}>{track.title}</h4>
+                      {downloads.includes(track.id) && (
+                        <span class="text-emerald-400 text-xs">
+                          <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                          </svg>
+                        </span>
+                      )}
+                    </div>
+                    <p class="text-[11px] text-slate-400 truncate mt-0.5">{track.subtitle}</p>
+                  </div>
+                  <span class="text-xs text-slate-400 font-mono pr-1">{track.duration}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
