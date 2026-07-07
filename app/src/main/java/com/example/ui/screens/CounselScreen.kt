@@ -117,7 +117,7 @@ fun CounselScreen(
                 .weight(1f)
                 .fillMaxWidth()
                 .testTag("chat_messages_list"),
-            contentPadding = PaddingValues(vertical = 16.dp, bottom = 80.dp), // Space for bottom banner
+            contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp), // Space for bottom banner
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             items(chatHistory) { message ->
