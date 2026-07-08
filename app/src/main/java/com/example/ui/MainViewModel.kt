@@ -13,12 +13,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import android.util.Log
 import java.util.Calendar
 
 sealed class Screen {
     object Welcome : Screen()
     object Dashboard : Screen()
     object MediaPlayer : Screen()
+    object Downloads : Screen()
     object Counsel : Screen()
 }
 
@@ -26,6 +30,23 @@ data class ChatMessage(
     val content: String,
     val isUser: Boolean,
     val timestamp: Long = System.currentTimeMillis()
+)
+
+enum class DownloadStatus {
+    DOWNLOADING, PAUSED, COMPLETED, FAILED_WIFI_REQUIRED, ERROR
+}
+
+data class ActiveDownload(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val type: String,
+    val content: String,
+    val duration: String,
+    val progress: Float, // 0.0f to 1.0f
+    val status: DownloadStatus,
+    val totalSizeMb: Float,
+    val downloadedSizeMb: Float
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -74,6 +95,72 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _selectedScriptureTheme = MutableStateFlow<String>("Covenant")
     val selectedScriptureTheme: StateFlow<String> = _selectedScriptureTheme.asStateFlow()
+
+    // App-Wide Network State
+    private val _isOffline = MutableStateFlow(false)
+    val isOffline: StateFlow<Boolean> = _isOffline.asStateFlow()
+
+    val syncOverWifiOnly: StateFlow<Boolean> = repository.getSyncOverWifiOnlyFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun toggleSyncOverWifiOnly() {
+        viewModelScope.launch {
+            repository.saveSyncOverWifiOnly(!syncOverWifiOnly.value)
+        }
+    }
+
+    private val _simulateMobileData = MutableStateFlow(false)
+    val simulateMobileData: StateFlow<Boolean> = _simulateMobileData.asStateFlow()
+
+    fun toggleSimulateMobileData() {
+        _simulateMobileData.value = !_simulateMobileData.value
+    }
+
+    private val _selectedSoundscape = MutableStateFlow("Forest Rainfall")
+    val selectedSoundscape: StateFlow<String> = _selectedSoundscape.asStateFlow()
+
+    private val _meditationAmbientVolume = MutableStateFlow(0.7f)
+    val meditationAmbientVolume: StateFlow<Float> = _meditationAmbientVolume.asStateFlow()
+
+    private val _meditationGuidanceVolume = MutableStateFlow(0.5f)
+    val meditationGuidanceVolume: StateFlow<Float> = _meditationGuidanceVolume.asStateFlow()
+
+    fun selectSoundscape(name: String) {
+        _selectedSoundscape.value = name
+        if (_isMeditationRunning.value) {
+            SanctuaryAudioEngine.startPlaying(name)
+        }
+    }
+
+    fun setMeditationAmbientVolume(volume: Float) {
+        val clamped = volume.coerceIn(0f, 1f)
+        _meditationAmbientVolume.value = clamped
+        SanctuaryAudioEngine.ambientVolume = clamped
+    }
+
+    fun setMeditationGuidanceVolume(volume: Float) {
+        val clamped = volume.coerceIn(0f, 1f)
+        _meditationGuidanceVolume.value = clamped
+        SanctuaryAudioEngine.guidanceVolume = clamped
+    }
+
+    // Active Downloads Map
+    private val _activeDownloads = MutableStateFlow<List<ActiveDownload>>(emptyList())
+    val activeDownloads: StateFlow<List<ActiveDownload>> = _activeDownloads.asStateFlow()
+
+    private val downloadJobs = mutableMapOf<String, Job>()
+
+    // Meditation Timer States
+    private val _meditationDuration = MutableStateFlow(5) // 5, 10, or 20 minutes
+    val meditationDuration: StateFlow<Int> = _meditationDuration.asStateFlow()
+
+    private val _meditationTimeRemaining = MutableStateFlow(300L) // countdown seconds
+    val meditationTimeRemaining: StateFlow<Long> = _meditationTimeRemaining.asStateFlow()
+
+    private val _isMeditationRunning = MutableStateFlow(false)
+    val isMeditationRunning: StateFlow<Boolean> = _isMeditationRunning.asStateFlow()
+
+    private var meditationTimerJob: Job? = null
 
     // Daily Affirmation States
     private val _dailyAffirmationText = MutableStateFlow<String>("")
@@ -268,6 +355,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isCurrentItemFavorited: StateFlow<Boolean> = _isCurrentItemFavorited.asStateFlow()
 
     init {
+        // Observe network connectivity
+        val connectivityManager = application.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        try {
+            val activeNetwork = connectivityManager.activeNetwork
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
+            val hasInternet = capabilities?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            _isOffline.value = !hasInternet
+
+            connectivityManager.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    _isOffline.value = false
+                }
+
+                override fun onLost(network: android.net.Network) {
+                    _isOffline.value = true
+                }
+
+                override fun onCapabilitiesChanged(
+                    network: android.net.Network,
+                    networkCapabilities: android.net.NetworkCapabilities
+                ) {
+                    val hasInternetCap = networkCapabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    _isOffline.value = !hasInternetCap
+                }
+            })
+        } catch (e: Exception) {
+            _isOffline.value = false
+        }
+
         // Load last selected mood preference if any
         viewModelScope.launch {
             repository.getLastMoodFlow().collectLatest { lastMood ->
@@ -378,6 +494,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Media Player controls
     fun selectMedia(item: MediaItem) {
+        stopMeditation()
         _currentMediaItem.value = item
         _isPlaying.value = true
         _playProgress.value = 0f
@@ -385,7 +502,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun togglePlay() {
+        if (!_isPlaying.value) {
+            stopMeditation()
+        }
         _isPlaying.value = !_isPlaying.value
+    }
+
+    // Meditation Timer Controls
+    fun setMeditationDuration(minutes: Int) {
+        _meditationDuration.value = minutes
+        if (!_isMeditationRunning.value) {
+            _meditationTimeRemaining.value = minutes * 60L
+        }
+    }
+
+    fun startMeditation() {
+        if (_isMeditationRunning.value) return
+        _isMeditationRunning.value = true
+        
+        if (_isPlaying.value) {
+            _isPlaying.value = false
+        }
+        
+        SanctuaryAudioEngine.startPlaying(_selectedSoundscape.value)
+        
+        meditationTimerJob?.cancel()
+        meditationTimerJob = viewModelScope.launch {
+            while (_meditationTimeRemaining.value > 0 && _isMeditationRunning.value) {
+                delay(1000)
+                _meditationTimeRemaining.value = _meditationTimeRemaining.value - 1
+            }
+            if (_meditationTimeRemaining.value <= 0) {
+                stopMeditation()
+            }
+        }
+    }
+
+    fun pauseMeditation() {
+        _isMeditationRunning.value = false
+        meditationTimerJob?.cancel()
+        meditationTimerJob = null
+        SanctuaryAudioEngine.stopPlaying()
+    }
+
+    fun stopMeditation() {
+        _isMeditationRunning.value = false
+        meditationTimerJob?.cancel()
+        meditationTimerJob = null
+        _meditationTimeRemaining.value = _meditationDuration.value * 60L
+        SanctuaryAudioEngine.stopPlaying()
     }
 
     fun updateProgress(value: Float) {
@@ -567,6 +732,139 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Download / Offline Management
+    private fun isWifiConnected(): Boolean {
+        return try {
+            val connectivityManager = getApplication<Application>().getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+            capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+        } catch (e: Exception) {
+            true // default to true in case of failure
+        }
+    }
+
+    fun startOrResumeDownload(
+        id: String,
+        title: String,
+        subtitle: String,
+        type: String,
+        content: String,
+        duration: String
+    ) {
+        val existing = _activeDownloads.value.find { it.id == id }
+        val initialProgress = existing?.progress ?: 0f
+        val totalSizeMb = when (type) {
+            "video" -> 45.2f
+            "audio_worship", "audio_prayer" -> 8.4f
+            else -> 0.05f
+        }
+
+        downloadJobs[id]?.cancel()
+
+        val isWifi = isWifiConnected() && !_simulateMobileData.value
+        val wifiOnly = syncOverWifiOnly.value
+
+        if (wifiOnly && !isWifi) {
+            val newTask = ActiveDownload(
+                id = id,
+                title = title,
+                subtitle = subtitle,
+                type = type,
+                content = content,
+                duration = duration,
+                progress = initialProgress,
+                status = DownloadStatus.FAILED_WIFI_REQUIRED,
+                totalSizeMb = totalSizeMb,
+                downloadedSizeMb = initialProgress * totalSizeMb
+            )
+            _activeDownloads.value = _activeDownloads.value.filter { it.id != id } + newTask
+            return
+        }
+
+        val newTask = ActiveDownload(
+            id = id,
+            title = title,
+            subtitle = subtitle,
+            type = type,
+            content = content,
+            duration = duration,
+            progress = initialProgress,
+            status = DownloadStatus.DOWNLOADING,
+            totalSizeMb = totalSizeMb,
+            downloadedSizeMb = initialProgress * totalSizeMb
+        )
+        _activeDownloads.value = _activeDownloads.value.filter { it.id != id } + newTask
+
+        val job = viewModelScope.launch {
+            var currentProgress = initialProgress
+            while (currentProgress < 1f) {
+                delay(300) // fast progression for outstanding UX
+
+                val currentWifi = isWifiConnected() && !_simulateMobileData.value
+                val currentWifiOnly = syncOverWifiOnly.value
+                if (currentWifiOnly && !currentWifi) {
+                    _activeDownloads.value = _activeDownloads.value.map {
+                        if (it.id == id) {
+                            it.copy(
+                                status = DownloadStatus.FAILED_WIFI_REQUIRED,
+                                downloadedSizeMb = currentProgress * totalSizeMb
+                            )
+                        } else it
+                    }
+                    return@launch
+                }
+
+                currentProgress += 0.1f
+                if (currentProgress >= 1f) {
+                    currentProgress = 1f
+                }
+
+                _activeDownloads.value = _activeDownloads.value.map {
+                    if (it.id == id) {
+                        it.copy(
+                            progress = currentProgress,
+                            downloadedSizeMb = currentProgress * totalSizeMb,
+                            status = if (currentProgress >= 1f) DownloadStatus.COMPLETED else DownloadStatus.DOWNLOADING
+                        )
+                    } else it
+                }
+            }
+
+            // Save completed download record into Room database!
+            repository.addDownload(
+                DownloadedResource(
+                    resourceId = id,
+                    title = title,
+                    subtitle = subtitle,
+                    type = type,
+                    content = content,
+                    duration = duration,
+                    language = language.value
+                )
+            )
+        }
+        downloadJobs[id] = job
+    }
+
+    fun pauseDownload(id: String) {
+        downloadJobs[id]?.cancel()
+        downloadJobs.remove(id)
+        _activeDownloads.value = _activeDownloads.value.map {
+            if (it.id == id) {
+                it.copy(status = DownloadStatus.PAUSED)
+            } else it
+        }
+    }
+
+    fun cancelOrDeleteDownload(id: String) {
+        downloadJobs[id]?.cancel()
+        downloadJobs.remove(id)
+        _activeDownloads.value = _activeDownloads.value.filter { it.id != id }
+        viewModelScope.launch {
+            repository.removeDownload(id)
+        }
+    }
+
     fun toggleDownload(
         id: String,
         title: String,
@@ -578,19 +876,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val isDown = repository.isDownloaded(id)
             if (isDown) {
-                repository.removeDownload(id)
+                cancelOrDeleteDownload(id)
             } else {
-                repository.addDownload(
-                    DownloadedResource(
-                        resourceId = id,
-                        title = title,
-                        subtitle = subtitle,
-                        type = type,
-                        content = content,
-                        duration = duration,
-                        language = language.value
-                    )
-                )
+                val active = _activeDownloads.value.find { it.id == id }
+                if (active != null) {
+                    if (active.status == DownloadStatus.DOWNLOADING) {
+                        pauseDownload(id)
+                    } else {
+                        startOrResumeDownload(id, title, subtitle, type, content, duration)
+                    }
+                } else {
+                    startOrResumeDownload(id, title, subtitle, type, content, duration)
+                }
             }
         }
     }
@@ -609,8 +906,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isFetchingScripture.value = true
             val lang = language.value
-            val apiKey = BuildConfig.GEMINI_API_KEY
+            val id = "scripture_${theme}_${lang}"
 
+            // 1. ALWAYS TRY LOADING LOCALLY FIRST FROM ROOM
+            val localRes = repository.getDownloadById(id)
+            if (localRes != null) {
+                val parts = localRes.content.split("|||")
+                if (parts.size >= 2) {
+                    _dailyScriptureText.value = parts[0]
+                    _dailyScriptureExplanation.value = parts[1]
+                } else {
+                    _dailyScriptureText.value = localRes.content
+                    _dailyScriptureExplanation.value = localRes.subtitle
+                }
+                _dailyScriptureReference.value = localRes.title
+                _isFetchingScripture.value = false
+                Log.d("SanctuarySync", "Successfully loaded $id locally from database first")
+                return@launch
+            }
+
+            // 2. FALLBACK TO ON-DEMAND FETCHING
+            val endpointUrl = when (lang) {
+                "es" -> "https://proyectobiblia.com"
+                "tl" -> "https://bibleproject.com/tagalog/"
+                else -> "https://bibleproject.com"
+            }
+            Log.d("SanctuarySync", "On-demand fallback fetch from Bible Project endpoint: $endpointUrl")
+
+            if (isOffline.value) {
+                loadOfflineScriptureFallback(theme, lang)
+                _isFetchingScripture.value = false
+                return@launch
+            }
+
+            val apiKey = BuildConfig.GEMINI_API_KEY
             if (apiKey.isEmpty() || apiKey == "null") {
                 loadOfflineScriptureFallback(theme, lang)
                 _isFetchingScripture.value = false
@@ -619,7 +948,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             try {
                 val systemPrompt = """
-                    You are an expert Bible teacher and scholar from The Bible Project. 
+                    You are an expert Bible teacher and scholar from the localized Bible Project endpoint ($endpointUrl). 
                     Generate exactly ONE inspirational scripture passage or verse based on the requested theme: '$theme'.
                     
                     CRITICAL FORMATTING RULE:
@@ -628,12 +957,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     {
                       "reference": "Book Chapter:Verse",
                       "text": "The actual text of the scripture...",
-                      "explanation": "A beautiful 2-3 sentence reflection in ${if(lang == "es") "Spanish" else if(lang == "tl") "Tagalog" else "English"} explaining how this verse fits into The Bible Project's theme of '$theme' and how it brings peace to a tired heart."
+                      "explanation": "A beautiful 2-3 sentence reflection in ${if(lang == "es") "Spanish" else if(lang == "tl") "Tagalog" else "English"} explaining how this verse fits into $endpointUrl's theme of '$theme' and how it brings peace to a tired heart."
                     }
                 """.trimIndent()
 
                 val request = GenerateContentRequest(
-                    contents = listOf(Content(parts = listOf(Part(text = "Please generate scripture JSON for the theme: $theme")))),
+                    contents = listOf(Content(parts = listOf(Part(text = "Please generate scripture JSON for the theme: $theme via $endpointUrl")))),
                     systemInstruction = Content(parts = listOf(Part(text = systemPrompt))),
                     generationConfig = com.example.data.api.GenerationConfig(
                         temperature = 0.5f

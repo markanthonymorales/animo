@@ -33,6 +33,7 @@ import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.MediaPlayerScreen
 import com.example.ui.screens.WelcomeScreen
 import com.example.ui.screens.CounselScreen
+import com.example.ui.screens.DownloadsScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.SOSColor
 
@@ -71,52 +72,76 @@ class MainActivity : ComponentActivity() {
                     topBar = {
                         // Display TopAppBar only when we are NOT on the Welcome screen to keep Welcome screen completely pure and deep
                         if (currentScreen != Screen.Welcome) {
-                            CenterAlignedTopAppBar(
-                                title = {
-                                    Text(
-                                        text = "Animo",
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.5.sp,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                },
-                                actions = {
-                                    // SOS Calm Button
-                                    Button(
-                                        onClick = { viewModel.toggleSOSGeneral(true) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = SOSColor),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                        modifier = Modifier
-                                            .padding(end = 8.dp)
-                                            .height(36.dp)
-                                            .testTag("sos_calm_appbar_button")
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = Icons.Default.Security,
-                                                contentDescription = null,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = when (language) {
-                                                    "es" -> "SOS"
-                                                    "tl" -> "SOS"
-                                                    else -> "SOS Calm"
-                                                },
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White
-                                            )
+                            val isOffline by viewModel.isOffline.collectAsState()
+                            Column {
+                                CenterAlignedTopAppBar(
+                                    title = {
+                                        Text(
+                                            text = "Animo",
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 1.5.sp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
+                                    actions = {
+                                        // SOS Calm Button
+                                        Button(
+                                            onClick = { viewModel.toggleSOSGeneral(true) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = SOSColor),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                            modifier = Modifier
+                                                .padding(end = 8.dp)
+                                                .height(36.dp)
+                                                .testTag("sos_calm_appbar_button")
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Security,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = when (language) {
+                                                        "es" -> "SOS"
+                                                        "tl" -> "SOS"
+                                                        else -> "SOS Calm"
+                                                    },
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White
+                                                )
+                                            }
                                         }
-                                    }
-                                },
-                                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                                    containerColor = MaterialTheme.colorScheme.background
+                                    },
+                                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                        containerColor = MaterialTheme.colorScheme.background
+                                    )
                                 )
-                            )
+                                if (isOffline) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFFE57373))
+                                            .padding(vertical = 4.dp)
+                                            .testTag("offline_indicator_banner"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = when (language) {
+                                                "es" -> "Trabajando sin conexión"
+                                                "tl" -> "Gumagana nang Offline"
+                                                else -> "Working Offline"
+                                            },
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
                         }
                     },
                     bottomBar = {
@@ -188,6 +213,32 @@ class MainActivity : ComponentActivity() {
                                     )
 
                                     NavigationBarItem(
+                                        selected = currentScreen == Screen.Downloads,
+                                        onClick = { viewModel.navigateTo(Screen.Downloads) },
+                                        icon = {
+                                            Icon(
+                                                imageVector = if (currentScreen == Screen.Downloads) Icons.Default.CloudDownload else Icons.Default.CloudDownload,
+                                                contentDescription = "Downloads"
+                                            )
+                                        },
+                                        label = {
+                                            Text(
+                                                text = when (language) {
+                                                    "es" -> "Descargas"
+                                                    "tl" -> "Downloads"
+                                                    else -> "Downloads"
+                                                }
+                                            )
+                                        },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                        ),
+                                        modifier = Modifier.testTag("nav_downloads")
+                                    )
+
+                                    NavigationBarItem(
                                         selected = currentScreen == Screen.Counsel,
                                         onClick = { viewModel.navigateTo(Screen.Counsel) },
                                         icon = {
@@ -237,6 +288,7 @@ class MainActivity : ComponentActivity() {
                                 is Screen.Welcome -> WelcomeScreen(viewModel = viewModel)
                                 is Screen.Dashboard -> DashboardScreen(viewModel = viewModel)
                                 is Screen.MediaPlayer -> MediaPlayerScreen(viewModel = viewModel)
+                                is Screen.Downloads -> DownloadsScreen(viewModel = viewModel)
                                 is Screen.Counsel -> CounselScreen(viewModel = viewModel)
                             }
                         }

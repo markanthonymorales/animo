@@ -52,4 +52,7 @@ interface DownloadedDao {
 
     @Query("SELECT EXISTS(SELECT * FROM downloaded_resources WHERE resourceId = :id)")
     suspend fun isDownloaded(id: String): Boolean
+
+    @Query("SELECT * FROM downloaded_resources WHERE resourceId = :id")
+    suspend fun getDownloadById(id: String): DownloadedResource?
 }

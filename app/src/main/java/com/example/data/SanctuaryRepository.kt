@@ -14,6 +14,9 @@ class SanctuaryRepository(private val db: AppDatabase) {
     suspend fun getLanguage(): String = prefDao.getPreference("pref_language")?.value ?: "en"
     suspend fun saveLanguage(lang: String) = prefDao.insertPreference(PreferenceEntry("pref_language", lang))
 
+    fun getSyncOverWifiOnlyFlow(): Flow<Boolean> = prefDao.getPreferenceFlow("pref_sync_over_wifi_only").map { it?.value == "true" }
+    suspend fun saveSyncOverWifiOnly(enabled: Boolean) = prefDao.insertPreference(PreferenceEntry("pref_sync_over_wifi_only", enabled.toString()))
+
     fun getMorningNotificationTimeFlow(): Flow<String> = prefDao.getPreferenceFlow("pref_notif_morning").map { it?.value ?: "07:00 AM" }
     suspend fun saveMorningNotificationTime(time: String) = prefDao.insertPreference(PreferenceEntry("pref_notif_morning", time))
 
@@ -50,4 +53,5 @@ class SanctuaryRepository(private val db: AppDatabase) {
     suspend fun addDownload(resource: DownloadedResource) = downloadedDao.insertDownload(resource)
     suspend fun removeDownload(id: String) = downloadedDao.deleteDownload(id)
     suspend fun isDownloaded(id: String): Boolean = downloadedDao.isDownloaded(id)
+    suspend fun getDownloadById(id: String): DownloadedResource? = downloadedDao.getDownloadById(id)
 }
